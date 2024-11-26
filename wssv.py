@@ -37,13 +37,17 @@ class AggTradesKlineServer:
         if not url:
             raise ValueError(f"Invalid symbol type: {self.symbol_type}")
 
-        async with websockets.connect(url) as ws:
-            while True:
-                try:
-                    msg = await ws.recv()
-                    await self._bnc_ws_clt_msg_handler(msg)
-                except websockets.ConnectionClosed:
-                    break
+        while True:
+            self._logger.info(f"connecting to {url}")
+            async with websockets.connect(url) as ws:
+                self._logger.info(f"connected to {url}")
+                while True:
+                    try:
+                        msg = await ws.recv()
+                        await self._bnc_ws_clt_msg_handler(msg)
+                    except websockets.ConnectionClosed:
+                        self._logger.error(f"binance websocket connection closed, reconnecting...")
+                        break
                 
     async def _broadcast_kline(self, kline: dict):
         if not self.clients:
@@ -55,6 +59,7 @@ class AggTradesKlineServer:
                 await client.send(json.dumps(kline))
             except websockets.ConnectionClosed:
                 self.clients.remove(client)
+                self._logger.info(f"client disconnected, clients number: {len(self.clients)}")
                 
     async def _bnc_ws_clt_msg_handler(self, msg):
         try:
@@ -115,6 +120,7 @@ class AggTradesKlineServer:
                 self._logger.info(f"msg: {msg}")
         finally:
             self.clients.remove(ws)
+            self._logger.info(f"client disconnected, clients number: {len(self.clients)}")
             
     async def _start_sv(self):
         async with websockets.serve(self._ws_sv_handler, "localhost", self.port):
